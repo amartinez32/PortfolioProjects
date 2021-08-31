@@ -1,0 +1,108 @@
+--Total Cases VS Total Deaths
+--Shows the likelihood of dying if you contract covid in your country
+-- Example is of United States 
+SELECT location, date, total_cases, total_deaths,  (cast(total_deaths as float)/total_cases)*100 AS DeathPercentage
+FROM PortfolioProject.dbo.CovidDeaths
+WHERE location LIKE '%states%' AND continent IS NOT NULL
+ORDER BY 1,2;
+
+--Total Cases VS Population
+--Show what percetange of the population is infected with COVID
+SELECT location, date, population, total_cases, (total_cases/population)*100 as PercentPopulationInfected
+FROM PortfolioProject.dbo.CovidDeaths
+WHERE location LIKE '%states'
+ORDER BY  1,2
+
+--Countries with Highest Infection Rate Compared to Population
+SELECT location, population,MAX(total_cases) AS HighestInfectionCount, MAX((total_cases/population)) * 100 AS PercentPopulationInfected
+FROM PortfolioProject.dbo.CovidDeaths
+GROUP BY location, population
+ORDER BY PercentPopulationInfected desc
+
+--Countries with Highest Death Count per population
+
+SELECT location, MAX(total_deaths) AS TotalDeathCount
+FROM PortfolioProject.dbo.CovidDeaths
+WHERE continent IS NOT NULL
+GROUP BY location
+ORDER BY TotalDeathCount desc; 
+
+--BREAKING THINGS DOWN BY CONTINENT
+
+--Showing continents with the highest death count per population
+SELECT continent, MAX(total_deaths) AS TotalDeathCount
+FROM PortfolioProject.dbo.CovidDeaths
+WHERE continent IS NOT NULL
+GROUP BY continent
+ORDER BY TotalDeathCount desc; 
+
+--Global Numbers
+SELECT SUM(new_cases) as total_cases, SUM(new_deaths) AS total_deaths, SUM(cast(new_deaths AS float))/SUM(new_cases) * 100 AS DeathPercentage
+FROM PortfolioProject.dbo.CovidDeaths
+WHERE continent IS NOT NULL
+ORDER BY 1,2
+
+--Total Population VS Vaccinations
+--Shows Percentage of Population that has recieved at least one Covid Vaccine
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
+SUM(CONVERT(int,vac.new_vaccinations)) OVER (PARTITION by dea.location ORDER BY dea.location, dea.Date) AS RollingPeopleVaccinated
+FROM PortfolioProject.dbo.CovidDeaths AS dea 
+JOIN PortfolioProject.dbo.CovidVaccinations vac 
+ON dea.location = vac.location AND dea.date = vac.date 
+WHERE dea.continent IS NOT NULL --AND dea.location LIKE '%states%'
+ORDER BY 2,3
+
+--Using CTE to perform Calculation on Partition By in previous query
+
+;WITH PopvsVac(continent,location,date, population, new_vaccinations,RollingPeopleVaccinated)
+
+AS 
+(
+SELECT dea.continent, dea.location,dea.date, dea.population, vac.new_vaccinations,
+SUM(CONVERT(int,vac.new_vaccinations)) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) as RollingPeopleVaccinated
+--,(RollingPeopleVaccinated/population)*100
+FROM PortfolioProject.dbo.CovidDeaths AS dea 
+JOIN PortfolioProject.dbo.CovidVaccinations AS vac 
+    ON dea.location = vac.location AND dea.date = vac.date
+WHERE dea.continent IS NOT NULL
+-- ORDER BY 2,3
+)
+SELECT *, (RollingPeopleVaccinated/population) * 100
+FROM PopvsVac;
+
+--Using Temp Table to Perform Calculation on Partition By in previous query
+
+DROP TABLE if exists #PercentPopulationVaccinated
+Create Table #PercentPopulationVaccinated
+(
+    continent nvarchar(255),
+    location nvarchar(255),
+    datem datetime,
+    population numeric,
+    new_vaccinations numeric,
+    RollingPeopleVaccinated numeric
+)
+
+INSERT INTO #PercentPopulationVaccinated
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
+SUM(CONVERT(INT,vac.new_vaccinations)) OVER (PARTITION by dea.location ORDER BY dea.location,dea.date) AS RollingPeopleVaccinated
+FROM PortfolioProject.dbo.CovidDeaths dea 
+JOIN PortfolioProject.dbo.CovidVaccinations vac 
+ON dea.location = vac.location  AND dea.date = vac.date 
+SELECT *, RollingPeopleVaccinated/Population) * 100
+FROM #PercentPopulationVaccinated
+
+
+--Creating View to store data for late visualizations
+
+CREATE VIEW  PercentPopulationVaccinated AS 
+SELECT dea.continent, dea.location,dea.date,dea.population,vac.new_vaccinations,
+SUM(CONVERT(INT, vac.new_vaccinations)) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) AS RollingPeopleVaccinated
+FROM PortfolioProject.dbo.CovidDeaths dea 
+JOIN PortfolioProject.dbo.CovidVaccinations vac 
+ON dea.location = vac.location AND dea.date = vac.date 
+WHERE dea.continent IS NOT NULL 
+
+
+SELECT *
+FROM PercentPopulationVaccinated
